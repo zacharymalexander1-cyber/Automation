@@ -1,0 +1,256 @@
+
+# ============================================
+# Project 001 - Windows System Health Monitor
+# Author: Zachary Alexander
+# Description:
+# Monitors CPU, memory, disk space, and uptime.
+# Generates a text report and CSV summary.
+# ============================================
+
+param(
+    [int]$CpuWarning = 85,
+    [int]$MemoryWarning = 85,
+    [int]$DiskWarning = 90
+)
+
+$ErrorActionPreference = "Stop"
+
+# Create a reports folder beside the script
+$ReportFolder = Join-Path $PSScriptRoot "reports"
+
+if (-not (Test-Path $ReportFolder)) {
+    New-Item -Path $ReportFolder -ItemType Directory |
+        Out-Null
+}
+
+$Timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+$ComputerName = $env:COMPUTERNAME
+
+$TextReport = Join-Path $ReportFolder "Health_$Timestamp.txt"
+$CsvReport = Join-Path $ReportFolder "Health_$Timestamp.csv"
+
+Write-Host "`n======================================"
+Write-Host "       SYSTEM HEALTH MONITOR"
+Write-Host "======================================"
+Write-Host "Computer: $ComputerName"
+Write-Host "Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+
+# --------------------------------------------
+# 1. CPU UTILIZATION
+# --------------------------------------------
+
+Write-Host "`n[1] Checking CPU utilization..."
+
+$CpuSamples = @(
+    Get-CimInstance Win32_Processor |
+        Select-Object -ExpandProperty LoadPercentage
+)
+
+$CpuUsage = [math]::Round(
+    ($CpuSamples | Measure-Object -Average).Average,
+    2
+)
+
+Write-Host "CPU Usage: $CpuUsage%"
+
+# --------------------------------------------
+# 2. MEMORY UTILIZATION
+# --------------------------------------------
+
+Write-Host "`n[2] Checking memory utilization..."
+
+$OS = Get-CimInstance Win32_OperatingSystem
+
+$TotalMemoryGB = [math]::Round(
+    $OS.TotalVisibleMemorySize / 1MB, 2
+)
+
+$FreeMemoryGB = [math]::Round(
+    $OS.FreePhysicalMemory / 1MB, 2
+)
+
+$UsedMemoryGB = [math]::Round(
+    $TotalMemoryGB - $FreeMemoryGB, 2
+)
+
+$MemoryUsage = [math]::Round(
+    ($UsedMemoryGB / $TotalMemoryGB) * 100, 2
+)
+
+Write-Host "Total Memory: $TotalMemoryGB GB"
+Write-Host "Used Memory:  $UsedMemoryGB GB"
+Write-Host "Free Memory:  $FreeMemoryGB GB"
+Write-Host "Memory Usage: $MemoryUsage%"
+
+# --------------------------------------------
+# 3. DISK UTILIZATION
+# --------------------------------------------
+
+Write-Host "`n[3] Checking disk utilization..."
+
+$Disks = @(
+    Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3"
+)
+
+$DiskResults = @(
+    foreach ($Disk in $Disks) {
+
+        if ($Disk.Size -le 0) {
+            continue
+        }
+
+        $TotalGB = [math]::Round($Disk.Size / 1GB, 2)
+        $FreeGB = [math]::Round($Disk.FreeSpace / 1GB, 2)
+        $UsedGB = [math]::Round(
+            $TotalGB - $FreeGB, 2
+        )
+
+        $DiskUsage = [math]::Round(
+            (($Disk.Size - $Disk.FreeSpace) /
+                $Disk.Size) * 100, 2
+        )
+
+        [PSCustomObject]@{
+            Drive = $Disk.DeviceID
+            TotalGB = $TotalGB
+            UsedGB = $UsedGB
+            FreeGB = $FreeGB
+            UsagePercent = $DiskUsage
+        }
+    }
+)
+
+$DiskResults | Format-Table -AutoSize
+
+# --------------------------------------------
+# 4. SYSTEM UPTIME
+# --------------------------------------------
+
+Write-Host "`n[4] Checking system uptime..."
+
+$LastBoot = $OS.LastBootUpTime
+$Uptime = (Get-Date) - $LastBoot
+
+$UptimeDisplay = "{0} days, {1} hours, {2} minutes" -f `
+    $Uptime.Days, $Uptime.Hours, $Uptime.Minutes
+
+Write-Host "Last Boot: $LastBoot"
+Write-Host "Uptime: $UptimeDisplay"
+
+# --------------------------------------------
+# 5. HEALTH ALERTS
+# --------------------------------------------
+
+Write-Host "`n[5] Evaluating health thresholds..."
+
+$Alerts = @()
+
+if ($CpuUsage -ge $CpuWarning) {
+    $Alerts += "WARNING: CPU usage is $CpuUsage%"
+}
+
+if ($MemoryUsage -ge $MemoryWarning) {
+    $Alerts += "WARNING: Memory usage is $MemoryUsage%"
+}
+
+foreach ($Disk in $DiskResults) {
+    if ($Disk.UsagePercent -ge $DiskWarning) {
+        $Alerts += "WARNING: Drive $($Disk.Drive) is $($Disk.UsagePercent)% full"
+    }
+}
+
+if ($Alerts.Count -eq 0) {
+    $HealthStatus = "HEALTHY"
+    Write-Host "System Status: HEALTHY" -ForegroundColor Green
+}
+else {
+    $HealthStatus = "WARNING"
+    Write-Host "System Status: WARNING" -ForegroundColor Yellow
+
+    foreach ($Alert in $Alerts) {
+        Write-Host $Alert -ForegroundColor Yellow
+    }
+}
+
+# --------------------------------------------
+# 6. GENERATE TEXT REPORT
+# --------------------------------------------
+
+Write-Host "`n[6] Generating reports..."
+
+$ReportLines = @(
+    "SYSTEM HEALTH REPORT"
+    "======================================"
+    "Computer: $ComputerName"
+    "Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    "Overall Status: $HealthStatus"
+    ""
+    "CPU"
+    "CPU Usage: $CpuUsage%"
+    ""
+    "MEMORY"
+    "Total Memory: $TotalMemoryGB GB"
+    "Used Memory: $UsedMemoryGB GB"
+    "Free Memory: $FreeMemoryGB GB"
+    "Memory Usage: $MemoryUsage%"
+    ""
+    "SYSTEM UPTIME"
+    "Last Boot: $LastBoot"
+    "Uptime: $UptimeDisplay"
+    ""
+    "DISK UTILIZATION"
+)
+
+foreach ($Disk in $DiskResults) {
+    $ReportLines += (
+        "$($Disk.Drive) - " +
+        "$($Disk.UsagePercent)% used, " +
+        "$($Disk.FreeGB) GB free"
+    )
+}
+
+$ReportLines += ""
+$ReportLines += "ALERTS"
+
+if ($Alerts.Count -eq 0) {
+    $ReportLines += "No warning thresholds exceeded."
+}
+else {
+    $ReportLines += $Alerts
+}
+
+$ReportLines | Out-File -FilePath $TextReport -Encoding UTF8
+
+# --------------------------------------------
+# 7. GENERATE CSV REPORT
+# --------------------------------------------
+
+$CsvData = @(
+    foreach ($Disk in $DiskResults) {
+        [PSCustomObject]@{
+            Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            ComputerName = $ComputerName
+            CPUPercent = $CpuUsage
+            MemoryPercent = $MemoryUsage
+            Drive = $Disk.Drive
+            DiskUsedPercent = $Disk.UsagePercent
+            DiskFreeGB = $Disk.FreeGB
+            UptimeDays = $Uptime.Days
+            HealthStatus = $HealthStatus
+        }
+    }
+)
+
+$CsvData | Export-Csv -Path $CsvReport -NoTypeInformation
+
+# --------------------------------------------
+# 8. COMPLETION
+# --------------------------------------------
+
+Write-Host "`n======================================"
+Write-Host "          SCAN COMPLETE"
+Write-Host "======================================"
+Write-Host "Overall Status: $HealthStatus"
+Write-Host "Text Report: $TextReport"
+Write-Host "CSV Report:  $CsvReport"
+Write-Host "======================================`n"
