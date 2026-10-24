@@ -7,12 +7,14 @@
 # Generates a text report and CSV summary.
 # ============================================
 
+# Set parameters in which a warning is needed 
 param(
     [int]$CpuWarning = 85,
     [int]$MemoryWarning = 85,
     [int]$DiskWarning = 90
 )
 
+# Stop Execution in event of Error
 $ErrorActionPreference = "Stop"
 
 # Create a reports folder beside the script
@@ -23,9 +25,11 @@ if (-not (Test-Path $ReportFolder)) {
         Out-Null
 }
 
+# Creation of timestamp for report and retrieve computer name
 $Timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $ComputerName = $env:COMPUTERNAME
 
+# Defines output for text and csv files
 $TextReport = Join-Path $ReportFolder "Health_$Timestamp.txt"
 $CsvReport = Join-Path $ReportFolder "Health_$Timestamp.csv"
 
@@ -37,6 +41,10 @@ Write-Host "Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 
 # --------------------------------------------
 # 1. CPU UTILIZATION
+# Start of health check process
+# Retrieves and stores results in arry 
+# Then calculates the average processor load
+# Rounds it to two deciaml places
 # --------------------------------------------
 
 Write-Host "`n[1] Checking CPU utilization..."
@@ -55,6 +63,9 @@ Write-Host "CPU Usage: $CpuUsage%"
 
 # --------------------------------------------
 # 2. MEMORY UTILIZATION
+# Calculates memory usage through subtracting
+# Calculates % of physical memory in use
+# Then Displays memory stats
 # --------------------------------------------
 
 Write-Host "`n[2] Checking memory utilization..."
@@ -84,6 +95,11 @@ Write-Host "Memory Usage: $MemoryUsage%"
 
 # --------------------------------------------
 # 3. DISK UTILIZATION
+# Retrieves information from logical drives
+# Checks each drive, avoids drives with 0 capacity
+# Calcultes total, used, and available disk space
+# Uses that to determine % of disk space used
+# Then stores result and displays it
 # --------------------------------------------
 
 Write-Host "`n[3] Checking disk utilization..."
@@ -124,6 +140,9 @@ $DiskResults | Format-Table -AutoSize
 
 # --------------------------------------------
 # 4. SYSTEM UPTIME
+# Pulls data from last startup
+# Subtracts last startup from current time
+# formats and displays the last boot and current uptime
 # --------------------------------------------
 
 Write-Host "`n[4] Checking system uptime..."
@@ -139,6 +158,13 @@ Write-Host "Uptime: $UptimeDisplay"
 
 # --------------------------------------------
 # 5. HEALTH ALERTS
+# Creates array to store health warnings
+# Compares CPU and Memory aginst warning Thresolds
+# Checks each drive thresholds
+# Warning message is added if threshold is reached
+# If no warnings = Healthly
+# If warning = Unhealthly
+# Displays overall status
 # --------------------------------------------
 
 Write-Host "`n[5] Evaluating health thresholds..."
@@ -174,6 +200,7 @@ else {
 
 # --------------------------------------------
 # 6. GENERATE TEXT REPORT
+# Creates txt file to store information for later use
 # --------------------------------------------
 
 Write-Host "`n[6] Generating reports..."
@@ -223,6 +250,7 @@ $ReportLines | Out-File -FilePath $TextReport -Encoding UTF8
 
 # --------------------------------------------
 # 7. GENERATE CSV REPORT
+# Creates the CSV report for later use
 # --------------------------------------------
 
 $CsvData = @(
@@ -245,6 +273,7 @@ $CsvData | Export-Csv -Path $CsvReport -NoTypeInformation
 
 # --------------------------------------------
 # 8. COMPLETION
+# Scan finished
 # --------------------------------------------
 
 Write-Host "`n======================================"
