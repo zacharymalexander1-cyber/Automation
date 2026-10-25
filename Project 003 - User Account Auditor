@@ -1,0 +1,52 @@
+
+# -----------------------------------------
+# Project 003 - User Account Auditor
+# Scans for active Admin accounts
+# Creates a report for review
+# -----------------------------------------
+
+# Creates Report for Audit Review
+
+try {
+
+    $Users = Get-LocalUser -ErrorAction Stop
+    $Admins = Get-LocalGroupMember -Group "Administrators" -ErrorAction Stop
+
+    $ReportFolder = Join-Path $PSScriptRoot "reports"
+
+    if (-not (Test-Path $ReportFolder)) {
+        New-Item -Path $ReportFolder -ItemType Directory -ErrorAction Stop | Out-Null
+    }
+
+    $TimeStamp = Get-Date -Format "MM-dd-yyyy_HH-mm-tt"
+    $ReportPath = Join-Path $ReportFolder "SecurityAudit_$TimeStamp.txt"
+
+    "Windows Account Security Audit" | Out-File $ReportPath -ErrorAction Stop
+    "Computer: $env:COMPUTERNAME" | Out-File $ReportPath -Append -ErrorAction Stop
+    "Date: $(Get-Date)" | Out-File $ReportPath -Append -ErrorAction Stop
+    "----------------------------------------------" | Out-File $ReportPath -Append -ErrorAction Stop
+
+    foreach ($User in $Users) {
+
+        $IsAdmin = $User.SID -in $Admins.SID
+
+        if ($User.Enabled -and $IsAdmin) {
+
+            Write-Host "Security Review: Enabled Administrator Account" -ForegroundColor Yellow
+
+            "Account: $($User.Name)" | Out-File $ReportPath -Append -ErrorAction Stop
+            "Enabled: $($User.Enabled)" | Out-File $ReportPath -Append -ErrorAction Stop
+            "Administrator: $IsAdmin" | Out-File $ReportPath -Append -ErrorAction Stop
+            "Password Required: $($User.PasswordRequired)" | Out-File $ReportPath -Append -ErrorAction Stop
+            "Review Reason: Enabled Administrator Account" | Out-File $ReportPath -Append -ErrorAction Stop
+            "----------------------------------" | Out-File $ReportPath -Append -ErrorAction Stop
+        }
+    }
+
+    Write-Host "Security Audit Report Saved: $ReportPath" -ForegroundColor Green
+
+}
+catch {
+    Write-Host "Error: Unable to complete security audit report." -ForegroundColor DarkRed
+    Write-Host $_.Exception.Message
+}
