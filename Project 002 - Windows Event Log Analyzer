@@ -1,0 +1,50 @@
+# -----------------------------------------
+# Project 002 - Windows Event Log Analyzer
+# Prompts for an investigation Time Range
+# Retrieves systems event log from time range
+# Display matching event details 
+# -----------------------------------------
+
+Write-Host " Windows Event Log Analyzer "
+
+# Ask for Investigation Window
+# Loop to catch invalid Input
+$ValidInput = $false
+
+while (-not $ValidInput) {
+
+    $DateInput = Read-Host "Enter Investigation date (MM/DD/YYYY)"
+    $StartInput = Read-Host "Enter Start Time (Example: 1:00pm)"
+    $EndInput = Read-Host "Enter End Time (Example: 4:00pm)"
+
+    Try {
+        # Convert enter text into date/time values
+        $StartTime = [datetime]::Parse("$DateInput $StartInput")
+        $EndTime = [datetime]::Parse("$DateInput $EndInput")
+
+      
+        # Check that end time comes after start time
+        if ($EndTime -le $StartTime) 
+        {
+        Write-Host "Error: End time must be after start." -ForegroundColor Red
+        continue
+        }
+          $ValidInput = $true
+        }
+        catch {
+            Write-host "Error: invalid date or time. Please try again." -ForegroundColor Yellow
+            }
+                            }
+
+# Retrieve events from selected time range
+try {
+Get-WinEvent -FilterHashtable @{
+LogName = 'System'
+StartTime = $StartTime
+EndTime = $EndTime
+} -ErrorAction Stop | Format-List TimeCreated, ID, ProviderName, Message
+}
+catch {
+Write-host "Event Log Search Failed" -ForegroundColor DarkRed
+write-host $_.exception.message
+}
